@@ -45,7 +45,50 @@ namespace Mapper.Core
       {
         throw;
       }
-    } 
+    }
+
+    /// <summary>
+    /// Execute SQL and map retur to T class
+    /// </summary>
+    /// <typeparam name="T">Class with params returned</typeparam>
+    /// <param name="pConnection">DB Conection string</param>
+    /// <param name="pSPName">Store procedure name</param>
+    /// <param name="pParamValues">Values of params to execute sp</param>
+    /// <returns>DTO mapped class</returns>
+    public static T ExecuteSqlNonQuery<T>(string pConnection, string pSPName, params object[] pParamValues)
+    {
+      using (var con = new SqlConnection(pConnection))
+      {
+        con.Open();
+
+        using (var command = new SqlCommand(pSPName, con))
+        {
+          command.CommandType = CommandType.StoredProcedure;
+          SqlCommandBuilder.DeriveParameters(command);  //Derive parameters for make autodiscovery
+          for (int i = 0; i < command.Parameters.Count; i++)
+          {
+            if (command.Parameters[i].Direction == ParameterDirection.Input)
+              command.Parameters[i].Value = pParamValues[i];
+
+            if (command.Parameters[i].Direction == ParameterDirection.InputOutput)
+              command.Parameters[i].Direction = ParameterDirection.Output;
+          }
+
+          command.ExecuteNonQuery();
+          var element = (T)Activator.CreateInstance(typeof(T));
+          var propiedades = element.GetType().GetProperties();
+          foreach (var item in propiedades)
+          {
+            var columna = item.GetCustomAttributes(false).FirstOrDefault().ToString();
+            var valor = command.Parameters[columna].Value;
+            item.SetValue(element, Converter(valor, item.PropertyType), null);
+          }
+
+          return element;
+        }
+      }
+
+    }
 
     public static IEnumerable<T> Get<T>(IDataReader pDataReader)
     {
